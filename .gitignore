@@ -1,0 +1,10 @@
+.research/
+target/
+*.apk
+*.xapk
+release/
+/mr3-readback*.txt
+/diagnostics/
+*.tmp
+*.log
+/.env
