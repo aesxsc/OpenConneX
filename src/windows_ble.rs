@@ -121,8 +121,8 @@ pub async fn adapter() -> Result<Adapter> {
         address: protocol::address_display(adapter.BluetoothAddress().map_err(error)?),
         name: radio_name.to_string(),
         radio: radio_state.into(),
-        supports_le: adapter.IsLowEnergySupported().map_err(error)?,
-        supports_classic: adapter.IsClassicSupported().map_err(error)?,
+        supports_le: adapter.IsLowEnergySupported().ok(),
+        supports_classic: adapter.IsClassicSupported().ok(),
     })
 }
 
@@ -307,7 +307,7 @@ impl Connection {
         }
     }
 
-    pub fn is_connected(&self) -> bool {
+    pub async fn is_connected(&self) -> bool {
         self.device.ConnectionStatus().ok() == Some(BluetoothConnectionStatus::Connected)
     }
 
@@ -341,7 +341,7 @@ impl Connection {
     }
 }
 
-pub fn windows_version() -> Option<String> {
+pub fn os_version() -> Option<String> {
     use windows::{
         Wdk::System::SystemServices::RtlGetVersion,
         Win32::System::SystemInformation::OSVERSIONINFOW,

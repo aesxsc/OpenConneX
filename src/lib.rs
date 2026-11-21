@@ -1,14 +1,18 @@
 pub mod device;
+#[cfg(any(windows, target_os = "linux"))]
 mod engine;
 pub mod protocol;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 mod storage;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 mod ui;
-#[cfg(windows)]
-mod windows_ble;
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
+#[cfg_attr(windows, path = "windows_ble.rs")]
+#[cfg_attr(target_os = "linux", path = "linux_ble.rs")]
+mod ble;
+
+#[cfg(any(windows, target_os = "linux"))]
 pub use engine::hardware_check;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub use ui::run;

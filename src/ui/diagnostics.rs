@@ -2,7 +2,7 @@ use super::theme::*;
 use crate::{engine::State, protocol};
 use eframe::egui::{self, Align, Grid, Layout, RichText, ScrollArea, Ui};
 
-static WINDOWS_VERSION: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+static OS_VERSION: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
 
 struct Section {
     title: &'static str,
@@ -19,20 +19,21 @@ fn yes_no(value: bool) -> String {
 
 fn sections(state: &State) -> Vec<Section> {
     let speaker = &state.speaker;
+    #[cfg(windows)]
+    let (platform, backend, version_label) = ("Windows", "Windows Runtime GATT", "OS build");
+    #[cfg(target_os = "linux")]
+    let (platform, backend, version_label) = ("Linux", "BlueZ GATT", "Kernel");
     let mut system = vec![
         ("App", format!("OpenConneX {}", env!("CARGO_PKG_VERSION"))),
-        ("Platform", format!("Windows · {}", std::env::consts::ARCH)),
         (
-            "OS build",
-            optional(
-                std::sync::OnceLock::get_or_init(
-                    &WINDOWS_VERSION,
-                    crate::windows_ble::windows_version,
-                )
-                .clone(),
-            ),
+            "Platform",
+            format!("{platform} · {}", std::env::consts::ARCH),
         ),
-        ("Bluetooth backend", "Windows Runtime GATT".into()),
+        (
+            version_label,
+            optional(OS_VERSION.get_or_init(crate::ble::os_version).clone()),
+        ),
+        ("Bluetooth backend", backend.into()),
         ("Rendering", "Native egui · OpenGL".into()),
     ];
     if let Some(adapter) = &state.adapter {
@@ -40,8 +41,11 @@ fn sections(state: &State) -> Vec<Section> {
             ("Radio", adapter.name.clone()),
             ("Radio state", adapter.radio.clone()),
             ("Adapter address", adapter.address.clone()),
-            ("Bluetooth LE", yes_no(adapter.supports_le)),
-            ("Bluetooth Classic", yes_no(adapter.supports_classic)),
+            ("Bluetooth LE", optional(adapter.supports_le.map(yes_no))),
+            (
+                "Bluetooth Classic",
+                optional(adapter.supports_classic.map(yes_no)),
+            ),
         ]);
     }
     let mut connection = vec![(

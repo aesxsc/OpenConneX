@@ -1,4 +1,5 @@
 use crate::{
+    ble,
     device::{Adapter, Candidate, Endpoint, Equalizer, Link, Sound, Speaker},
     protocol::{self, Decoder, cmd},
 };
@@ -18,7 +19,7 @@ const TICK: Duration = Duration::from_secs(4);
 
 trait Transport {
     fn details(&self) -> Link;
-    fn is_connected(&self) -> bool;
+    async fn is_connected(&self) -> bool;
     async fn receive(&mut self) -> Option<Vec<u8>>;
     async fn write(&self, bytes: &[u8]) -> Result<()>;
 }
@@ -76,9 +77,7 @@ impl Drop for Worker {
     }
 }
 
-#[cfg(windows)]
 pub fn spawn(redraw: impl Fn() + Send + 'static) -> Worker {
-    use crate::windows_ble::Apartment;
     let (cmd_tx, cmd_rx) = async_mpsc::channel(8);
     let (state_tx, state_rx) = mpsc::channel();
     let (done_tx, done) = mpsc::channel();
@@ -86,9 +85,10 @@ pub fn spawn(redraw: impl Fn() + Send + 'static) -> Worker {
         .name("openconnex-ble".into())
         .spawn(move || {
             let start = || -> Result<()> {
-                let _apartment = Apartment::enter()?;
+                #[cfg(windows)]
+                let _apartment = ble::Apartment::enter()?;
                 let runtime = tokio::runtime::Builder::new_current_thread()
-                    .enable_time()
+                    .enable_all()
                     .build()
                     .map_err(|error| error.to_string())?;
                 runtime.block_on(event_loop(cmd_rx, &state_tx, &redraw));
@@ -111,13 +111,12 @@ pub fn spawn(redraw: impl Fn() + Send + 'static) -> Worker {
     }
 }
 
-#[cfg(windows)]
-impl Transport for crate::windows_ble::Connection {
+impl Transport for ble::Connection {
     fn details(&self) -> Link {
         self.details()
     }
-    fn is_connected(&self) -> bool {
-        self.is_connected()
+    async fn is_connected(&self) -> bool {
+        self.is_connected().await
     }
     async fn receive(&mut self) -> Option<Vec<u8>> {
         self.receive().await
@@ -172,7 +171,7 @@ impl<T: Transport> Session<T> {
         self.log(state, "TX", &bytes);
         timeout(Duration::from_secs(4), self.transport.write(&bytes))
             .await
-            .map_err(|_| "Windows timed out writing to the speaker.")??;
+            .map_err(|_| "Bluetooth write to the speaker timed out.")??;
         let reply = timeout(REPLY_TIMEOUT, async {
             while let Some(bytes) = self.transport.receive().await {
                 if let Some(reply) = self.ingest(state, &bytes, Some(code)) {
@@ -241,7 +240,7 @@ impl<T: Transport> Session<T> {
     }
 
     async fn control(&mut self, state: &mut State, control: Control) -> Result<()> {
-        if !self.transport.is_connected() || !state.speaker.is_mr3() {
+        if !state.speaker.is_mr3() || !self.transport.is_connected().await {
             return Err("Connect an MR3 speaker first.".into());
         }
         match control {
@@ -354,40 +353,38 @@ impl<T: Transport> Session<T> {
     }
 }
 
-#[cfg(windows)]
-async fn open(
-    endpoint: Endpoint,
-    state: &mut State,
-) -> Result<Session<crate::windows_ble::Connection>> {
+async fn open(endpoint: Endpoint, state: &mut State) -> Result<Session<ble::Connection>> {
     let candidate = state
         .candidates
         .iter()
         .find(|candidate| candidate.endpoint == endpoint)
         .cloned();
     let transport = timeout(Duration::from_secs(18), async {
-        let first = crate::windows_ble::Connection::open(endpoint, candidate.clone()).await;
+        let first = ble::Connection::open(endpoint, candidate.clone()).await;
+        #[cfg(windows)]
         if let Err(error) = &first
             && error.contains("Windows denied Bluetooth access")
         {
             time::sleep(Duration::from_millis(650)).await;
-            return crate::windows_ble::Connection::open(endpoint, candidate).await;
+            return ble::Connection::open(endpoint, candidate).await;
         }
         first
     })
     .await
     .map_err(|_| "The speaker did not accept a Bluetooth connection in time.".to_owned())??;
     let mut session = Session::new(transport);
-    session.identify(state).await?;
+    if let Err(error) = session.identify(state).await {
+        session.transport.close().await;
+        return Err(error);
+    }
     Ok(session)
 }
 
-#[cfg(windows)]
 async fn event_loop(
     mut commands: async_mpsc::Receiver<Action>,
     updates: &mpsc::Sender<State>,
     redraw: &impl Fn(),
 ) {
-    use crate::windows_ble as ble;
     let mut state = State::default();
     let publish = |state: &State| {
         let _ = updates.send(state.clone());
@@ -410,7 +407,7 @@ async fn event_loop(
                     Some(Action::Disconnect)
                 }
                 _ = tick.tick() => {
-                    if session.transport.is_connected() {
+                    if session.transport.is_connected().await {
                         continue;
                     }
                     state.message = Some("Bluetooth control link lost. Reconnect to resume.".into());
@@ -520,19 +517,19 @@ async fn event_loop(
     }
 }
 
-#[cfg(windows)]
 pub fn hardware_check(path: &std::path::Path, verify_writes: bool) -> Result<()> {
     let mut report = String::new();
     let mut state = State::default();
     let run = || -> Result<()> {
-        let _apartment = crate::windows_ble::Apartment::enter()?;
+        #[cfg(windows)]
+        let _apartment = ble::Apartment::enter()?;
         tokio::runtime::Builder::new_current_thread()
-            .enable_time()
+            .enable_all()
             .build()
             .map_err(|error| error.to_string())?
             .block_on(async {
-                state.adapter = crate::windows_ble::adapter().await.ok();
-                state.candidates = crate::windows_ble::scan(Duration::from_secs(6)).await?;
+                state.adapter = ble::adapter().await.ok();
+                state.candidates = ble::scan(Duration::from_secs(6)).await?;
                 let mut advertising = state.candidates.iter().filter(|device| device.mr3);
                 let endpoint = match (advertising.next(), advertising.next()) {
                     (Some(candidate), None) => candidate.endpoint,
@@ -556,69 +553,73 @@ pub fn hardware_check(path: &std::path::Path, verify_writes: bool) -> Result<()>
                     session.transport.close().await;
                     return Ok(());
                 }
-                let (_, volume) = speaker.volume.ok_or("No volume readback")?;
-                let sound = speaker.sound.ok_or("No acoustic tuning readback")?;
-                let eq = speaker.equalizer.clone().ok_or("No custom EQ readback")?;
-                let changed_volume = if volume > 0 { volume - 1 } else { 1 };
-                let attempt = session
-                    .control(&mut state, Control::Volume(changed_volume))
-                    .await
-                    .and_then(|()| {
-                        (state.speaker.volume.map(|(_, value)| value) == Some(changed_volume))
-                            .then_some(())
-                            .ok_or("Volume mismatch after write".into())
-                    });
-                let restore = session.control(&mut state, Control::Volume(volume)).await;
-                restore?;
-                if state.speaker.volume.map(|(_, value)| value) != Some(volume) {
-                    return Err("Could not verify original volume was restored".into());
-                }
-                attempt?;
-                let _ = writeln!(
-                    report,
-                    "Volume changed and restored ({volume} → {changed_volume} → {volume})"
-                );
-                let target_sound = Sound {
-                    space: if sound.space < 4 { sound.space + 1 } else { 3 },
-                    ..sound
-                };
-                let attempt = session
-                    .control(&mut state, Control::Sound(target_sound, false))
-                    .await;
-                session
-                    .control(&mut state, Control::Sound(sound, false))
-                    .await?;
-                attempt?;
-                let _ = writeln!(
-                    report,
-                    "Acoustic-space adjustment changed and restored ({} → {} → {})",
-                    sound.space, target_sound.space, sound.space
-                );
-
-                let gain = eq.gains[0];
-                let new_gain = if gain < 12 { gain + 1 } else { gain - 1 };
-                let attempt = session
-                    .control(&mut state, Control::Band(0, new_gain))
-                    .await;
-                session.control(&mut state, Control::Preset(eq)).await?;
-                attempt?;
-                let _ = writeln!(
-                    report,
-                    "EQ band change confirmed and original full preset restored"
-                );
-
-                if let Some(enabled) = state.speaker.prompt_tones {
+                let result = async {
+                    let (_, volume) = speaker.volume.ok_or("No volume readback")?;
+                    let sound = speaker.sound.ok_or("No acoustic tuning readback")?;
+                    let eq = speaker.equalizer.clone().ok_or("No custom EQ readback")?;
+                    let changed_volume = if volume > 0 { volume - 1 } else { 1 };
                     let attempt = session
-                        .control(&mut state, Control::PromptTones(!enabled))
+                        .control(&mut state, Control::Volume(changed_volume))
+                        .await
+                        .and_then(|()| {
+                            (state.speaker.volume.map(|(_, value)| value) == Some(changed_volume))
+                                .then_some(())
+                                .ok_or("Volume mismatch after write".into())
+                        });
+                    let restore = session.control(&mut state, Control::Volume(volume)).await;
+                    restore?;
+                    if state.speaker.volume.map(|(_, value)| value) != Some(volume) {
+                        return Err("Could not verify original volume was restored".into());
+                    }
+                    attempt?;
+                    let _ = writeln!(
+                        report,
+                        "Volume changed and restored ({volume} → {changed_volume} → {volume})"
+                    );
+                    let target_sound = Sound {
+                        space: if sound.space < 4 { sound.space + 1 } else { 3 },
+                        ..sound
+                    };
+                    let attempt = session
+                        .control(&mut state, Control::Sound(target_sound, false))
                         .await;
                     session
-                        .control(&mut state, Control::PromptTones(enabled))
+                        .control(&mut state, Control::Sound(sound, false))
                         .await?;
                     attempt?;
-                    let _ = writeln!(report, "Prompt-tone setting changed and restored");
+                    let _ = writeln!(
+                        report,
+                        "Acoustic-space adjustment changed and restored ({} → {} → {})",
+                        sound.space, target_sound.space, sound.space
+                    );
+
+                    let gain = eq.gains[0];
+                    let new_gain = if gain < 12 { gain + 1 } else { gain - 1 };
+                    let attempt = session
+                        .control(&mut state, Control::Band(0, new_gain))
+                        .await;
+                    session.control(&mut state, Control::Preset(eq)).await?;
+                    attempt?;
+                    let _ = writeln!(
+                        report,
+                        "EQ band change confirmed and original full preset restored"
+                    );
+
+                    if let Some(enabled) = state.speaker.prompt_tones {
+                        let attempt = session
+                            .control(&mut state, Control::PromptTones(!enabled))
+                            .await;
+                        session
+                            .control(&mut state, Control::PromptTones(enabled))
+                            .await?;
+                        attempt?;
+                        let _ = writeln!(report, "Prompt-tone setting changed and restored");
+                    }
+                    Ok(())
                 }
+                .await;
                 session.transport.close().await;
-                Ok(())
+                result
             })
     };
     let result = {

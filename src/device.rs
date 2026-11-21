@@ -23,8 +23,8 @@ pub struct Adapter {
     pub address: String,
     pub name: String,
     pub radio: String,
-    pub supports_le: bool,
-    pub supports_classic: bool,
+    pub supports_le: Option<bool>,
+    pub supports_classic: Option<bool>,
 }
 
 #[derive(Clone, Debug)]

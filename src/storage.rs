@@ -9,9 +9,24 @@ pub struct Library {
     pub presets: Vec<Equalizer>,
 }
 
+#[cfg(windows)]
 fn path() -> Option<PathBuf> {
     let root = std::env::var_os("LOCALAPPDATA")?;
     Some(PathBuf::from(root).join("OpenConneX").join("library.json"))
+}
+
+#[cfg(target_os = "linux")]
+fn path() -> Option<PathBuf> {
+    let root = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .filter(|path| path.is_absolute())
+                .map(|home| home.join(".local/share"))
+        })?;
+    Some(root.join("OpenConneX").join("library.json"))
 }
 
 impl Library {
@@ -34,7 +49,7 @@ impl Library {
     }
 
     pub fn save(&self) -> Result<(), String> {
-        let path = path().ok_or("Windows did not provide a local app data directory.")?;
+        let path = path().ok_or("Could not find the local app data directory.")?;
         let parent = path.parent().ok_or("Invalid local app data path.")?;
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         // Preserve the original library if loading revealed a corrupt or unsupported file.

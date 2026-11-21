@@ -1,6 +1,6 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 fn main() -> std::process::ExitCode {
     let mut args = std::env::args_os().skip(1);
     if let Some(option) = args.next() {
@@ -15,7 +15,10 @@ fn main() -> std::process::ExitCode {
             .is_some_and(|option| option == "--verify-writes");
         return match openconnex_core::hardware_check(std::path::Path::new(&path), writes) {
             Ok(()) => std::process::ExitCode::SUCCESS,
-            Err(_) => std::process::ExitCode::FAILURE,
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::ExitCode::FAILURE
+            }
         };
     }
     match openconnex_core::run() {
@@ -27,7 +30,7 @@ fn main() -> std::process::ExitCode {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 fn main() {
-    eprintln!("This build needs the Windows Bluetooth transport.");
+    eprintln!("OpenConneX supports Windows and Linux.");
 }

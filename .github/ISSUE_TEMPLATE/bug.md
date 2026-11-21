@@ -5,7 +5,7 @@ labels: bug
 ---
 
 **Environment**
-OpenConneX version, Windows build, speaker model and firmware.
+OpenConneX version, Windows build or Linux distribution and BlueZ version, speaker model and firmware.
 
 **Steps and result**
 What did you do? What happened and what did you expect?

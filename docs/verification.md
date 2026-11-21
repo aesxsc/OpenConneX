@@ -4,7 +4,7 @@ Reference app version **EDIFIER ConneX 1.0.32**. Physical test device **EDIFIER 
 
 | Feature | Coverage |
 | --- | --- |
-| BLE discovery, identification, reconnect and notifications | App connected to the physical MR3 through the Windows GATT transport |
+| BLE discovery, identification, reconnect and notifications | App connected to the physical MR3 through WinRT on Windows and BlueZ on Arch Linux |
 | Volume and nine-band EQ | Real writes and readbacks. The original volume and full EQ preset were restored |
 | Prompt tones | The setting was toggled, read back and restored |
 | Acoustic tuning | Real write and readback. The original acoustic-space value was restored |

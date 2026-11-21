@@ -309,7 +309,12 @@ impl App {
         fade.add_triangle(0, 1, 2);
         fade.add_triangle(0, 2, 3);
         painter.add(egui::Shape::mesh(fade));
-        painter.rect_stroke(rect, 16, Stroke::new(1.0, EDGE), egui::StrokeKind::Inside);
+        painter.rect_stroke(
+            rect,
+            16,
+            Stroke::new(1.0_f32, EDGE),
+            egui::StrokeKind::Inside,
+        );
         let text_rect = egui::Rect::from_min_size(
             rect.min + egui::vec2(24.0, 28.0),
             egui::vec2(width - art_width + 28.0, height - 45.0),
@@ -376,7 +381,7 @@ impl App {
                         TEXT
                     }))
                     .fill(fill)
-                    .stroke(Stroke::new(1.0, if selected { ACCENT } else { EDGE }))
+                    .stroke(Stroke::new(1.0_f32, if selected { ACCENT } else { EDGE }))
                     .corner_radius(10);
                     let width = ui.available_width();
                     let response = ui.add_enabled(
@@ -813,6 +818,7 @@ impl App {
                     }
                 });
             }
+            #[cfg(windows)]
             if button(ui, "Windows Bluetooth settings ↗", false).clicked()
                 && let Err(error) = std::process::Command::new("explorer.exe")
                     .arg("ms-settings:bluetooth")
@@ -820,7 +826,7 @@ impl App {
             {
                 self.notice = Some(format!("Could not open Bluetooth settings. {error}"));
             }
-            ui.label(secondary("Pair EDIFIER MR3 in Windows to stream PC audio. OpenConneX uses a separate BLE link."));
+            ui.label(secondary("Pair EDIFIER MR3 in your system’s Bluetooth settings to stream audio. OpenConneX uses a separate BLE link."));
         });
         let speaker = self.state.speaker.clone();
         if let Some((4, source)) = speaker.input {
@@ -910,7 +916,7 @@ impl App {
                     ui.label(secondary(format!("v{}", env!("CARGO_PKG_VERSION"))));
                 });
             });
-            ui.label("A native Windows Bluetooth controller for EDIFIER MR3 studio monitors.");
+            ui.label("A native Bluetooth controller for EDIFIER MR3 studio monitors.");
             ui.horizontal_wrapped(|ui| {
                 ui.label(secondary("Created by"));
                 ui.hyperlink_to("@aesxsc", "https://github.com/aesxsc");

@@ -69,7 +69,7 @@ pub fn setup(ctx: &egui::Context) {
     style.visuals.widgets.active.fg_stroke.color = ACCENT;
     style.visuals.selection = egui::style::Selection {
         bg_fill: ACCENT_FILL,
-        stroke: Stroke::new(1.0, ACCENT),
+        stroke: Stroke::new(1.0_f32, ACCENT),
     };
     style.spacing.item_spacing = egui::vec2(10.0, 12.0);
     style.spacing.button_padding = egui::vec2(13.0, 8.0);
@@ -98,7 +98,7 @@ pub fn secondary(text: impl Into<String>) -> RichText {
 pub fn card(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Frame::new()
         .fill(PANEL)
-        .stroke(Stroke::new(1.0, EDGE))
+        .stroke(Stroke::new(1.0_f32, EDGE))
         .corner_radius(16)
         .inner_margin(Margin::same(22))
         .show(ui, |ui| {
@@ -110,7 +110,7 @@ pub fn card(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
 pub fn button(ui: &mut Ui, text: impl Into<WidgetText>, primary: bool) -> egui::Response {
     let mut button = egui::Button::new(text).corner_radius(8);
     if primary {
-        button = button.fill(ACCENT).stroke(Stroke::new(1.0, ACCENT));
+        button = button.fill(ACCENT).stroke(Stroke::new(1.0_f32, ACCENT));
     }
     ui.add(button)
 }
@@ -149,7 +149,7 @@ pub fn nav(ui: &mut Ui, name: &str, icon: usize, selected: bool) -> bool {
 
 fn glyph(ui: &Ui, p: Pos2, index: usize, color: Color32) {
     let painter = ui.painter();
-    let stroke = Stroke::new(1.5, color);
+    let stroke = Stroke::new(1.5_f32, color);
     let at = |x, y| p + egui::vec2(x, y);
     match index {
         0 => {
