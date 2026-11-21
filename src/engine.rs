@@ -554,9 +554,13 @@ pub fn hardware_check(path: &std::path::Path, verify_writes: bool) -> Result<()>
                     return Ok(());
                 }
                 let result = async {
-                    let (_, volume) = speaker.volume.ok_or("No volume readback")?;
-                    let sound = speaker.sound.ok_or("No acoustic tuning readback")?;
-                    let eq = speaker.equalizer.clone().ok_or("No custom EQ readback")?;
+                    let (_, volume) = state.speaker.volume.ok_or("No volume readback")?;
+                    let sound = state.speaker.sound.ok_or("No acoustic tuning readback")?;
+                    let eq = state
+                        .speaker
+                        .equalizer
+                        .clone()
+                        .ok_or("No custom EQ readback")?;
                     let changed_volume = if volume > 0 { volume - 1 } else { 1 };
                     let attempt = session
                         .control(&mut state, Control::Volume(changed_volume))
