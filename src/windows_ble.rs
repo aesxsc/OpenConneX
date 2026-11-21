@@ -156,13 +156,13 @@ pub async fn scan(duration: Duration) -> Result<Vec<Candidate>> {
         if let Ok(mut devices) = found.lock() {
             let device = devices.entry(address).or_insert(Candidate {
                 endpoint: Endpoint { address, random },
-                rssi,
+                rssi: Some(rssi),
                 name: String::new(),
                 mr3: false,
                 company: None,
                 advertisement: Vec::new(),
             });
-            device.rssi = rssi;
+            device.rssi = Some(rssi);
             if !name.is_empty() {
                 device.name = name;
             }
@@ -189,7 +189,7 @@ pub async fn scan(duration: Duration) -> Result<Vec<Candidate>> {
         .values()
         .cloned()
         .collect::<Vec<_>>();
-    devices.sort_by_key(|device| (!device.mr3, -i32::from(device.rssi)));
+    devices.sort_by_key(|device| (!device.mr3, std::cmp::Reverse(device.rssi)));
     Ok(devices)
 }
 
@@ -294,7 +294,7 @@ impl Connection {
             endpoint: self.endpoint,
             name: self.device.Name().unwrap_or_default().to_string(),
             att_mtu: self.session.MaxPduSize().unwrap_or(23),
-            rssi: self.candidate.as_ref().map(|candidate| candidate.rssi),
+            rssi: self.candidate.as_ref().and_then(|candidate| candidate.rssi),
             company: self
                 .candidate
                 .as_ref()

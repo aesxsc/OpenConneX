@@ -769,11 +769,11 @@ impl App {
                             found.name.as_str()
                         };
                         ui.label(title(name, 15.0));
-                        ui.label(secondary(format!(
-                            "{}  ·  {} dBm",
-                            protocol::address_display(found.endpoint.address),
-                            found.rssi
-                        )));
+                        let mut address = protocol::address_display(found.endpoint.address);
+                        if let Some(rssi) = found.rssi {
+                            address.push_str(&format!("  ·  {rssi} dBm"));
+                        }
+                        ui.label(secondary(address));
                     });
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if selected == Some(found.endpoint) {

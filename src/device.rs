@@ -11,7 +11,7 @@ pub struct Endpoint {
 #[derive(Clone, Debug)]
 pub struct Candidate {
     pub endpoint: Endpoint,
-    pub rssi: i16,
+    pub rssi: Option<i16>,
     pub name: String,
     pub mr3: bool,
     pub company: Option<u16>,

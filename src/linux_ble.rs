@@ -43,15 +43,19 @@ pub async fn adapter() -> Result<Adapter> {
     })
 }
 
-async fn candidate(device: &Device, discovery_uuid: Uuid) -> Option<Candidate> {
-    let rssi = device.rssi().await.ok()??;
+async fn candidate(device: &Device, discovery_uuid: Uuid, service_uuid: Uuid) -> Option<Candidate> {
+    let rssi = device.rssi().await.ok().flatten();
+    // BlueZ may drop advertising properties while an existing GATT link is active.
+    if rssi.is_none() && !device.is_connected().await.ok()? {
+        return None;
+    }
     let name = device.name().await.ok().flatten().unwrap_or_default();
     let mr3 = device
         .uuids()
         .await
         .ok()
         .flatten()
-        .is_some_and(|uuids| uuids.contains(&discovery_uuid));
+        .is_some_and(|uuids| uuids.contains(&discovery_uuid) || uuids.contains(&service_uuid));
     let advertisement = device
         .manufacturer_data()
         .await
@@ -101,6 +105,7 @@ pub async fn scan(duration: Duration) -> Result<Vec<Candidate>> {
     let discovery_uuid = protocol::DISCOVERY_UUID
         .parse()
         .expect("valid discovery UUID");
+    let service_uuid = protocol::SERVICE_UUID.parse().expect("valid service UUID");
     let mut candidates = BTreeMap::new();
     loop {
         tokio::select! {
@@ -108,7 +113,7 @@ pub async fn scan(duration: Duration) -> Result<Vec<Candidate>> {
             event = events.next() => match event {
                 Some(AdapterEvent::DeviceAdded(address)) => {
                     if let Ok(device) = adapter.device(address)
-                        && let Ok(Some(found)) = timeout(Duration::from_millis(300), candidate(&device, discovery_uuid)).await
+                        && let Ok(Some(found)) = timeout(Duration::from_millis(300), candidate(&device, discovery_uuid, service_uuid)).await
                     {
                         candidates.insert(address, found);
                     }
@@ -122,7 +127,7 @@ pub async fn scan(duration: Duration) -> Result<Vec<Candidate>> {
         }
     }
     let mut results = candidates.into_values().collect::<Vec<_>>();
-    results.sort_by_key(|device| (!device.mr3, -i32::from(device.rssi)));
+    results.sort_by_key(|device| (!device.mr3, std::cmp::Reverse(device.rssi)));
     Ok(results)
 }
 
@@ -252,7 +257,7 @@ impl Connection {
     }
 
     pub fn update_candidate(&mut self, candidate: Candidate) {
-        self.link.rssi = Some(candidate.rssi);
+        self.link.rssi = candidate.rssi;
         self.link.company = candidate.company;
         self.link.advertisement = candidate.advertisement;
     }
